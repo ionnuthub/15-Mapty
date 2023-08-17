@@ -3,15 +3,6 @@
 // prettier-ignore
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const form = document.querySelector('.form');
-const containerWorkouts = document.querySelector('.workouts');
-const inputType = document.querySelector('.form__input--type');
-const inputDistance = document.querySelector('.form__input--distance');
-const inputDuration = document.querySelector('.form__input--duration');
-const inputCadence = document.querySelector('.form__input--cadence');
-const inputElevation = document.querySelector('.form__input--elevation');
-let map, mapEvent; // creating the global variable
-
 //❗ Geolocation
 ///To get the geolocation
 // This function takes as an input 2 callback functions:
@@ -24,70 +15,196 @@ let map, mapEvent; // creating the global variable
 // 3 We use destructuring to save in a variable latitude , longitutde from position.coords
 // 4. We go on google maps we copy the link and we pass in our variables latitude,longitude
 
-if (navigator.geolocation)
-  navigator.geolocation.getCurrentPosition(
-    function (position) {
-      const { latitude } = position.coords;
-      const { longitude } = position.coords;
-      console.log(
-        `https://www.google.com/maps/@${latitude},${longitude},15z?entry=ttu`
+//❗Creaiting the Parent Class
+
+class Workout {
+  date = new Date();
+  id = (Date.now() + '').slice(-10); // transform the date in a string and get the last 10 out of the string
+  constructor(coords, distance, duration) {
+    this.coords = coords; // [lat,lng]
+    this.distance = distance; // in km
+    this.duration = duration; // in min
+  }
+}
+
+//❗Child Classes of Workout
+class Running extends Workout {
+  type = 'running';
+  //should take in the same data as the parent ,plus the additional properties that we want to set
+  constructor(coords, distance, duration, cadence) {
+    super(coords, distance, duration); // we call super to initialize the this keyword on parent class
+    this.cadence = cadence;
+    this.calcPace(); // it's perfectly fine to call any code in the constructor// we use it in the constructor to immediately calculate the pace
+  }
+  calcPace() {
+    // min/km
+    // we can create new property on the obj  (this.pace)
+    this.pace = this.duration / this.distance;
+    return this.pace;
+  }
+}
+
+class Cycling extends Workout {
+  type = 'cycling';
+  constructor(coords, distance, duration, elevaitionGain) {
+    super(coords, distance, duration);
+    this.elevaitionGain = elevaitionGain;
+    this.calcSpeed();
+  }
+
+  calcSpeed() {
+    // km/h
+    this.speed = this.distance / (this.duration / 60);
+    return this.speed;
+  }
+}
+
+// const run1 = new Running([59, -10], 7.1, 20, 200);
+// const cycling1 = new Cycling([59, -10], 25, 99, 523);
+// console.log(run1, cycling1);
+/////////////////////////////////////////////
+// Application Architecture
+const form = document.querySelector('.form');
+const containerWorkouts = document.querySelector('.workouts');
+const inputType = document.querySelector('.form__input--type');
+const inputDistance = document.querySelector('.form__input--distance');
+const inputDuration = document.querySelector('.form__input--duration');
+const inputCadence = document.querySelector('.form__input--cadence');
+const inputElevation = document.querySelector('.form__input--elevation');
+
+//❗ Creaiting The Class
+class App {
+  #map; // private instance properites
+  #mapEvent;
+  #workouts = [];
+
+  constructor() {
+    this.#getPosition();
+
+    ///❗Rendering Workout Input Form
+    form.addEventListener('submit', this.#newWorkout.bind(this)); // we need to bind the this keyword of the class
+
+    // Changing from cadence to elevation and back
+    inputType.addEventListener('change', this.#toggleElevationField);
+  }
+
+  #getPosition() {
+    if (navigator.geolocation)
+      navigator.geolocation.getCurrentPosition(
+        this.#loadMap.bind(this), // we bind(this) because it's a regular function call and it will get undefined// this have to point to the current obj
+        function () {
+          alert('Could not get your position'); // we get alert in the browser if we dont allow the geolocation
+        }
       );
+  }
 
-      const coords = [latitude, longitude]; // creating an array with lat and long
-      map = L.map('map').setView(coords, 15); // reassign the global variable
+  #loadMap(position) {
+    const { latitude } = position.coords;
+    const { longitude } = position.coords;
+    console.log(
+      `https://www.google.com/maps/@${latitude},${longitude},15z?entry=ttu`
+    );
 
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      }).addTo(map);
+    const coords = [latitude, longitude]; // creating an array with lat and long
 
-      //Handling Cliks on Map
-      map.on('click', function (mapE) {
-        mapEvent = mapE; /// reassign the mapEvent,
-        form.classList.remove('hidden'); // removing the class
-        inputDistance.focus(); // we focus the field on the element
-      });
-    },
-    function () {
-      alert('Could not get your position'); // we get alert in the browser if we dont allow the geolocation
+    console.log(this);
+    this.#map = L.map('map').setView(coords, 15); // reassign the global variable
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(this.#map);
+
+    //Handling Cliks on Map
+    this.#map.on('click', this.#showForm.bind(this)); // we have to bind this because it's an event handler
+  }
+
+  #showForm(mapE) {
+    this.#mapEvent = mapE; /// reassign the mapEvent,
+    form.classList.remove('hidden'); // removing the class
+    inputDistance.focus(); // we focus the field on the element
+  }
+
+  #toggleElevationField() {
+    inputElevation.closest('.form__row').classList.toggle('form__row--hidden');
+    inputCadence.closest('.form__row').classList.toggle('form__row--hidden'); //closest() select the closest parent with that class
+  }
+
+  #newWorkout(e) {
+    const validInputs = (...inputs) =>
+      inputs.every(inp => Number.isFinite(inp)); // refactoring// we create an array with rest which takes in an arbitrary amount of inputs  (...) and check if they are numbers (true)
+    const allPositive = (...inputs) => inputs.every(inp => inp > 0);
+
+    e.preventDefault(); // prevent default oterwise (form its reloading in the default)
+
+    // Get data from form
+    const type = inputType.value;
+    const distance = +inputDistance.value; // + transforming the string in to a number
+    const duration = +inputDuration.value;
+    const { lat, lng } = this.#mapEvent.latlng; // taking the lat,long from the obj using destructuring// we create the lat,lng variables based on latlng obj
+    let workout;
+    // If workout running, create running object
+    if (type === 'running') {
+      const cadence = +inputCadence.value;
+      // Check if data is valid
+      if (
+        // !Number.isFinite(distance) ||
+        // !Number.isFinite(duration) ||
+        // !Number.isFinite(cadence)
+        !validInputs(distance, duration, cadence) ||
+        !allPositive(distance, duration, cadence) // clause : we check if distance , duration,cadence (it is a number) if it's not a number return
+      )
+        return alert('Inputs have to be positive numbers!');
+      workout = new Running([lat, lng], distance, duration, cadence); // creating a new Running workout obj // defining an array of coords
     }
-  );
 
-///❗Rendering Workout Input Form
-form.addEventListener('submit', function (e) {
-  e.preventDefault(); // We have to prevent default oterwise (form its reloading in the default)
+    // If workout cycling, create cycling object
+    if (type === 'cycling') {
+      const elevation = +inputElevation.value;
 
-  //Clear Input Fields
-  inputDistance.value =
+      if (
+        !validInputs(distance, duration, elevation) ||
+        !allPositive(distance, duration)
+      )
+        return alert('Inputs have to be positive numbers!');
+
+      workout = new Cycling([lat, lng], distance, duration, elevation);
+    }
+
+    // Add new object to workouts array
+    this.#workouts.push(workout); // we push the obj workout in the workouts array
+    console.log(workout);
+
+    // Render workout on map as marker
+    this.renderWorkoutMarker(workout);
+
+    // Hide form + Clear Input Fields
+
     inputDistance.value =
-    inputDuration.value =
-    inputCadence.value =
-    inputElevation.value =
-      ''; // We have to clear the value not the entire element // value = '';
+      inputDuration.value =
+      inputCadence.value =
+      inputElevation.value =
+        ''; // We have to clear the value not the entire element // value = '';
+  }
 
-  //Display the marker
-  console.log(mapEvent);
-  const { lat, lng } = mapEvent.latlng; // taking the lat,long from the obj using destructuring
-  L.marker([lat, lng]) //  we pass in the lat and lng // to put the pin where we click// we specified an array url [lat,lng]
-    .addTo(map) // we add to the map
-    .bindPopup(
-      L.popup({
-        maxWidth: 300,
-        minWidth: 100,
-        autoClose: false,
-        closeOnClick: false,
-        className: 'running-popup',
-      })
-    ) //creates a Popup and bind it to the marker// we can create an obj with options
-    .setPopupContent('Workout') // set the content of the popup
-    .openPopup();
-});
+  renderWorkoutMarker(workout) {
+    L.marker(workout.coords) //  we pass in the lat and lng // to put the pin where we click// we specified an array url [lat,lng]
+      .addTo(this.#map) // we add to the map
+      .bindPopup(
+        L.popup({
+          maxWidth: 300,
+          minWidth: 100,
+          autoClose: false,
+          closeOnClick: false,
+          className: `${workout.type}-popup`,
+        })
+      ) //creates a Popup and bind it to the marker// we can create an obj with options
+      .setPopupContent('workout') // set the content of the popup// string
+      .openPopup();
+  }
+}
 
-// Changing from cadence to elevation and back
-inputType.addEventListener('change', function () {
-  inputElevation.closest('.form__row').classList.toggle('form__row--hidden');
-  inputCadence.closest('.form__row').classList.toggle('form__row--hidden'); //closest() select the closest parent with that class
-});
+const app = new App();
 
 /// ❗Displayng a map using LEAFLET Library (THIRD PARTY LIBRARY)
 /// We go to Download page :
@@ -145,3 +262,13 @@ inputType.addEventListener('change', function () {
 // In this case the data what we need to store and to manage comes directly from the user stories. We will design our classes so that can create objects that will hold this kind of data. that is for now about the architecture of our data.
 // The rest of the architecture is gone be more about structuring the code that we already have from previously lectures. And the events that we already have are: event loading of the page; event reciving a postion from the Geolocation API; event Click on the map; event of Change Input Form from running to cyclyng and back; event of submiting form.
 // We have to create different functions that will handle these different events.  We will create a big class called App that will hold all of these functions as methods
+
+//❗ Implementing the App Class
+// We create the class with all the methods.
+//In the moment when the object it's created the constructor it's triggerd wright away.
+// We use bind() to bind this because in a regular function call this it's undefined; // bind() return a new function
+// In an eventListener the this keyword points to the element which the event it's attached, to point to the class we have to use again bind()
+
+///❗ Mannaging Workout Data Creaiting Classes
+//1. We implement the parent class for both workouts // It will take in the data which it's common to both the workouts
+// 2. Any object should have some kind a unique identifier so that we can then later identify it using that id. //The id should come from a third party library in order to create unique id numbers
