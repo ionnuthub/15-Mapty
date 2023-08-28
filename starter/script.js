@@ -20,6 +20,7 @@ const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 class Workout {
   date = new Date();
   id = (Date.now() + '').slice(-10); // transform the date in a string and get the last 10 out of the string
+  clicks = 0;
   constructor(coords, distance, duration) {
     this.coords = coords; // [lat,lng]
     this.distance = distance; // in km
@@ -36,6 +37,10 @@ class Workout {
     } ${this.date.getDate()}, at ${this.date.getHours()} `; //first later upercasse // create a shallow copy of the type from poz 1// we retrieve the month from months// we get the date
 
     //When a new obj is created a description its set
+  }
+
+  clicked() {
+    this.clicks++;
   }
 }
 
@@ -77,6 +82,7 @@ class Cycling extends Workout {
 // const cycling1 = new Cycling([59, -10], 25, 99, 523);
 // console.log(run1, cycling1);
 /////////////////////////////////////////////
+
 // Application Architecture
 const form = document.querySelector('.form');
 const containerWorkouts = document.querySelector('.workouts');
@@ -90,16 +96,24 @@ const inputElevation = document.querySelector('.form__input--elevation');
 class App {
   #map; // private instance properites
   #mapEvent;
+  #mapZoomLevel = 14;
   #workouts = [];
 
   constructor() {
+    // Get user's position
     this.#getPosition();
 
+    // Get data from local storage
+    this.#getLocalStorage();
+
+    /// Attach event handlers
     ///❗Rendering Workout Input Form
     form.addEventListener('submit', this.#newWorkout.bind(this)); // we need to bind the this keyword of the class
 
     // Changing from cadence to elevation and back
     inputType.addEventListener('change', this.#toggleElevationField);
+
+    containerWorkouts.addEventListener('click', this.#moveToPopup.bind(this)); //adding the event listener in the constructor
   }
 
   #getPosition() {
@@ -121,8 +135,7 @@ class App {
 
     const coords = [latitude, longitude]; // creating an array with lat and long
 
-    console.log(this);
-    this.#map = L.map('map').setView(coords, 15); // reassign the global variable
+    this.#map = L.map('map').setView(coords, this.#mapZoomLevel); // reassign the global variable
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution:
@@ -131,6 +144,8 @@ class App {
 
     //Handling Cliks on Map
     this.#map.on('click', this.#showForm.bind(this)); // we have to bind this because it's an event handler
+
+    this.#workouts.forEach(work => this.#renderWorkoutMarker(work)); // render the workout on the map
   }
 
   #showForm(mapE) {
@@ -200,7 +215,6 @@ class App {
 
     // Add new object to workouts array
     this.#workouts.push(workout); // we push the obj workout in the workouts array
-    console.log(workout);
 
     // Render workout on map as marker
     this.#renderWorkoutMarker(workout);
@@ -210,6 +224,9 @@ class App {
 
     // Hide form + Clear Input Fields
     this.#hideForm();
+
+    // Set Local Storage to all workouts
+    this.#setLocalStorage();
   }
 
   #renderWorkoutMarker(workout) {
@@ -233,7 +250,7 @@ class App {
   #renderWorkoutonList(workout) {
     //we call the method with an obj// We create our html
     let html = `
-    <li class="workout workout--${workout.type}" data-id="1234567890">
+    <li class="workout workout--${workout.type}" data-id=${workout.id}>
     <h2 class="workout__title">${workout.description}</h2>
     <div class="workout__details">
       <span class="workout__icon">${
@@ -278,6 +295,45 @@ class App {
     }
 
     form.insertAdjacentHTML('afterend', html); // afterend it will add the new element as a sibling element at the end of the form
+  }
+
+  #moveToPopup(e) {
+    const workoutEl = e.target.closest('.workout');
+
+    if (!workoutEl) return;
+
+    const workout = this.#workouts.find(
+      work => work.id === workoutEl.dataset.id
+    );
+
+    this.#map.setView(workout.coords, this.#mapZoomLevel, {
+      animate: true,
+      pan: {
+        duration: 1,
+      },
+    });
+
+    /// Using the public interface
+    //workout.clicked();
+  }
+
+  // We set all workouts to a local storage
+  #setLocalStorage() {
+    localStorage.setItem('workouts', JSON.stringify(this.#workouts)); // 1st argument we give a a name// 2nd argument has to be a string which we associated with the key;  we convert an obj to a string
+  } // we don't need parameters because we get the workouts from the workout property
+
+  #getLocalStorage() {
+    const data = JSON.parse(localStorage.getItem('workouts')); // we convert the string back to obj// we get data from the storage.
+
+    if (!data) return;
+
+    this.#workouts = data;
+    this.#workouts.forEach(work => this.#renderWorkoutonList(work));
+  }
+
+  reset() {
+    localStorage.removeItem('workouts');
+    location.reload(); //reload the page programmatically , application will look emtpy
   }
 }
 
